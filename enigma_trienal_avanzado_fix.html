@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Enigma 2 · Rotación Trienal (Avanzado) — TRIENAL++</title>
+  <style>
+    :root {
+      --bg1: #fff7ed;
+      --bg2: #f8fafc;
+      --ink: #0f172a;
+      --muted: #475569;
+      --accent: #16a34a;
+      --warn: #e11d48;
+      --hint: #b45309;
+      --card: #ffffff;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin:0; padding:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji"; color: var(--ink); background: linear-gradient(180deg, var(--bg1), var(--bg2)); }
+    .container { max-width: 1040px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 4px 0; font-size: 28px; }
+    p.lead { margin: 0 0 12px 0; color: var(--muted); }
+    .controls { display:flex; gap:8px; flex-wrap: wrap; margin: 12px 0 20px; }
+    .btn { border:1px solid var(--border); background:#eef2ff; color:#3730a3; padding:8px 12px; border-radius: 10px; cursor:pointer; font-weight:600; }
+    .btn.gray { background:#e2e8f0; color:#0f172a; }
+    .btn.green { background:#16a34a; color:#fff; border-color:#16a34a; }
+    .meta { font-size:12px; color: var(--muted); margin-bottom: 10px; }
+    table { width: 100%; border-collapse: separate; border-spacing: 8px; }
+    th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    td, th { vertical-align: top; }
+    .rowhead { font-weight: 700; color:#334155; width: 140px; }
+    .cell { position:relative; min-height: 90px; border: 2px dashed var(--border); border-radius: 14px; background: #f1f5f9; display:flex; align-items:center; justify-content:center; padding:8px; }
+    .cell .empty { color:#94a3b8; font-size:12px; text-align:center; }
+    .chip { display:flex; gap:8px; align-items:center; background:#fff; border:1px solid var(--border); border-radius: 999px; padding:6px 10px; box-shadow: 0 0 0 0 rgba(0,0,0,0); transition:.15s box-shadow ease; cursor:grab; user-select: none; }
+    .chip:hover { box-shadow: 0 6px 16px rgba(2, 6, 23, .08); }
+    .chip .emoji { font-size:18px; }
+    .chip .label { font-weight:600; }
+    .close { position:absolute; top:6px; right:6px; font-size:11px; border:1px solid var(--border); background:#e2e8f0; border-radius:999px; padding:2px 6px; cursor:pointer; }
+    .bank { display:flex; flex-wrap:wrap; gap:8px; }
+    .card { background: var(--card); border:1px solid var(--border); border-radius: 14px; padding: 12px; }
+    .grid { overflow-x:auto; }
+    .summary { display:grid; grid-template-columns: repeat( auto-fit, minmax(240px, 1fr) ); gap:10px; }
+    .msg { font-size:14px; padding:8px 10px; border-radius: 10px; }
+    .msg.ok { background:#dcfce7; color:#065f46; }
+    .msg.err { background:#ffe4e6; color:#9f1239; }
+    .msg.hint { background:#fef3c7; color:#92400e; }
+    .codebox { margin-left: auto; text-align:right; }
+    .codebox .title { font-size:10px; color:#64748b; text-transform:uppercase; }
+    .codebox .code { font-size: 24px; font-weight: 900; letter-spacing: .3em; }
+    .footer { margin-top: 16px; font-size:12px; color:#64748b; }
+    .pill { display:inline-block; border:1px solid var(--border); padding:2px 8px; border-radius:999px; font-size:12px; color:#334155; background:#f8fafc; }
+    .kpi { display:flex; gap:12px; align-items:center; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="root"></div>
+  </div>
+
+  <!-- React + ReactDOM UMD -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- Babel Standalone to allow JSX inline -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect, useMemo } = React;
+
+    const CROPS = [
+      { id: "trigo", label: "Trigo", emoji: "🌾", type: "cereal", base: 3, fertDelta: -2 },
+      { id: "avena", label: "Avena", emoji: "🌱", type: "cereal", base: 2, fertDelta: -1 },
+      { id: "legumbres", label: "Legumbres", emoji: "🫘", type: "leguminosa", base: 2, fertDelta: +1 },
+      { id: "barbecho", label: "Barbecho", emoji: "🟤", type: "descanso", base: 0, fertDelta: +2 },
+    ];
+    const FIELDS = ["Campo Norte", "Campo Centro", "Campo Sur"];
+    const YEARS = ["Año 1", "Año 2", "Año 3"];
+
+    const cerealIds = new Set(["trigo","avena"]);
+
+    function Chip({ item, draggable=true, onPick }){
+      return (
+        <div
+          className="chip"
+          role="button"
+          tabIndex={0}
+          draggable={draggable}
+          onDragStart={(e)=> e.dataTransfer.setData("text/plain", JSON.stringify(item))}
+          onKeyDown={(e)=> (e.key==="Enter"||e.key===" ") && onPick && onPick()}
+          onClick={onPick}
+          aria-label={item.label}
+          title={item.label}
+        >
+          <span className="emoji" aria-hidden>{item.emoji}</span>
+          <span className="label">{item.label}</span>
+        </div>
+      );
+    }
+
+    function Cell({ value, onDrop, onClear }){
+      return (
+        <div
+          className="cell"
+          onDragOver={(e)=> e.preventDefault()}
+          onDrop={(e)=> { e.preventDefault(); try { onDrop(JSON.parse(e.dataTransfer.getData("text/plain"))); } catch{} }}
+        >
+          {value ? (<>
+            <Chip item={value} draggable={false} />
+            <button className="close" onClick={onClear} aria-label="Quitar">×</button>
+          </>): <div className="empty">Arrastra o haz clic en un cultivo</div>}
+        </div>
+      );
+    }
+
+    function useGrid(){
+      const [grid, setGrid] = useState(Array.from({length:FIELDS.length},()=> Array.from({length:YEARS.length},()=> null)));
+      const place = (r,c,it)=> setGrid(g=> { const next = g.map(row=> row.slice()); next[r][c] = it; return next; });
+      const clearCell = (r,c)=> place(r,c,null);
+      const reset = ()=> setGrid(Array.from({length:FIELDS.length},()=> Array.from({length:YEARS.length},()=> null)));
+      return { grid, place, clearCell, reset };
+    }
+
+    function calcOutcome(grid){
+      const fertStart = 2;
+      const perField = grid.map((row)=>{
+        let fert = fertStart;
+        const years = row.map((cell)=>{
+          if(!cell) return { crop:null, yield:0, fertAfter: fert };
+          const crop = CROPS.find(c=> c.id===cell.id);
+          const y = crop.base + fert;
+          fert = fert + crop.fertDelta;
+          return { crop, yield: y, fertAfter: fert };
+        });
+        const countBarbecho = row.filter(c=> c?.id==="barbecho").length;
+        const hasLegume = row.some(c=> c?.id==="legumbres");
+        let okNoConsecutiveCereal = true;
+        for(let i=1;i<row.length;i++){
+          if(row[i] && row[i-1] && cerealIds.has(row[i].id) && cerealIds.has(row[i-1].id)) okNoConsecutiveCereal=false;
+        }
+        return {
+          years,
+          sum: years.reduce((a,b)=> a+b.yield, 0),
+          rules: {
+            barbechoOnce: countBarbecho === 1,
+            hasLegume,
+            noConsecCereal: okNoConsecutiveCereal,
+          }
+        };
+      });
+      const total = perField.reduce((a,f)=> a+f.sum,0);
+      const perYear = YEARS.map((_, col)=>{
+        const cells = grid.map(row=> row[col]).filter(Boolean);
+        const exactTrigo = cells.filter(c=> c.id==="trigo").length===1;
+        const exactSpringOrLeg = cells.filter(c=> c.id==="avena"||c.id==="legumbres").length===1;
+        const exactBarbecho = cells.filter(c=> c.id==="barbecho").length===1;
+        return { exactCombo: exactTrigo && exactSpringOrLeg && exactBarbecho };
+      });
+      return { perField, perYear, total };
+    }
+
+    function App(){
+      const { grid, place, clearCell, reset } = useGrid();
+      const [mode, setMode] = useState("hard"); // "normal" | "hard"
+      const [message, setMessage] = useState({ type:null, text:null });
+      const [timerOn, setTimerOn] = useState(false);
+      const [seconds, setSeconds] = useState(0);
+      const [revealed, setRevealed] = useState(false);
+      const outcome = useMemo(()=> calcOutcome(grid), [grid]);
+
+      useEffect(()=>{
+        if(!timerOn) return;
+        const id = setInterval(()=> setSeconds(s=> s+1), 1000);
+        return ()=> clearInterval(id);
+      }, [timerOn]);
+
+      const filled = grid.flat().every(Boolean);
+
+      const handlePick = (r,c,cropId)=>{
+        const it = CROPS.find(x=> x.id===cropId);
+        place(r,c,it);
+        setMessage({ type:null, text:null });
+      };
+
+      const check = ()=>{
+        if(!filled){
+          setMessage({ type:"err", text:"Completa los 3 años en las 3 parcelas antes de comprobar." });
+          setRevealed(false);
+          return;
+        }
+        const badRows = outcome.perField.map((f,i)=> ({
+          idx:i,
+          errs:[
+            f.rules.barbechoOnce ? null : "exactamente 1 Barbecho",
+            f.rules.noConsecCereal ? null : "sin cereales consecutivos",
+            f.rules.hasLegume ? null : "al menos 1 Legumbres",
+          ].filter(Boolean),
+        })).filter(r=> r.errs.length>0);
+        if(badRows.length>0){
+          const msg = badRows.map(r=> FIELDS[r.idx]+": "+r.errs.join(", ")).join(" · ");
+          setMessage({ type:"err", text:"Revisa reglas por parcela → "+msg });
+          setRevealed(false);
+          return;
+        }
+        if(mode==="hard"){
+          const badYears = outcome.perYear.map((y,i)=> ({ idx:i, ok:y.exactCombo })).filter(y=> !y.ok);
+          if(badYears.length>0){
+            const msg = badYears.map(y=> YEARS[y.idx]).join(", ");
+            setMessage({ type:"err", text:`En modo Difícil, cada año debe tener 1 Trigo + 1 (Avena o Legumbres) + 1 Barbecho. Revisa: ${msg}.` });
+            setRevealed(false);
+            return;
+          }
+        }
+        const total = outcome.total;
+        const diezmo = Math.ceil(total * 0.10);
+        const renta = 5;
+        const superavit = total - (diezmo + renta);
+        const goal = mode==="hard" ? 10 : 6;
+        if(superavit >= goal){
+          setMessage({ type:"ok", text:`¡Correcto! Producción total ${total}. Diezmo ${diezmo} + Renta ${renta}. Superávit ${superavit} ≥ ${goal}. Código:` });
+          setRevealed(true);
+        } else {
+          setMessage({ type:"err", text:`Producción insuficiente: total ${total}. Tras diezmo (${diezmo}) y renta (${renta}), el superávit es ${superavit}. Objetivo ≥ ${goal}. Ajusta la rotación.` });
+          setRevealed(false);
+        }
+      };
+
+      const hint = ()=>{
+        setMessage({
+          type:"hint",
+          text: mode==="hard"
+            ? "Pista (Difícil): Cada columna debe ser una permutación: [Trigo] + [Avena o Legumbres] + [Barbecho]. Evita dos cereales seguidos en la misma parcela e incluye Legumbres para recuperar nutrientes."
+            : "Pista (Normal): 1 Barbecho por parcela, Legumbres al menos una vez, y nunca cereal tras cereal en la misma parcela.",
+        });
+      };
+
+      const toggleMode = ()=>{
+        setMode(m=> m==="hard" ? "normal" : "hard");
+        setMessage({ type:null, text:null });
+        setRevealed(false);
+      };
+
+      return (
+        <div>
+          <h1>Enigma 2 · La cosecha perdida (avanzado)</h1>
+          <p className="lead">Diseña una <b>rotación trienal</b> para 3 parcelas y 3 años. Respeta las reglas, paga el diezmo (10%) y la renta (5 u.) y alcanza el superávit.</p>
+          <div className="controls">
+            <button className="btn" onClick={toggleMode}>Modo: {mode==="hard" ? "Difícil" : "Normal"}</button>
+            <button className="btn gray" onClick={()=> setTimerOn(v=> !v)}>{timerOn ? "Pausar tiempo" : "Iniciar tiempo"}</button>
+            <button className="btn gray" onClick={()=> { setMessage({type:null, text:null}); setSeconds(0); setTimerOn(false); setRevealed(false); reset(); }}>Reiniciar</button>
+            <button className="btn green" onClick={check}>Comprobar</button>
+            <button className="btn" onClick={hint}>Pista</button>
+            <span className="pill">{timerOn ? `Tiempo: ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}` : "Tiempo pausado"}</span>
+          </div>
+
+          <div className="grid">
+            <table>
+              <thead>
+                <tr>
+                  <th>Parcelas / Años</th>
+                  {YEARS.map(y=> <th key={y}>{y}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {FIELDS.map((f, r)=> (
+                  <tr key={f}>
+                    <td className="rowhead">{f}</td>
+                    {YEARS.map((_, c)=> (
+                      <td key={c}>
+                        <Cell
+                          value={grid[r][c]}
+                          onDrop={(it)=> { place(r,c,it); setMessage({type:null, text:null}); }}
+                          onClear={()=> { clearCell(r,c); setMessage({type:null, text:null}); }}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="card" style={{marginTop:12}}>
+            <div className="meta"><b>Banco de cultivos</b> — Haz clic para colocar en el primer hueco libre, o arrastra a una celda.</div>
+            <div className="bank">
+              {CROPS.map(it=> (
+                <Chip key={it.id} item={it} onPick={()=> {
+                  outer: for(let r=0;r<FIELDS.length;r++){ for(let c=0;c<YEARS.length;c++){ if(!grid[r][c]){ place(r,c,it); break outer; } } }
+                }} />
+              ))}
+            </div>
+          </div>
+
+          <div className="card" style={{marginTop:12}}>
+            <h3 style={{margin:"0 0 8px 0"}}>Resumen de producción</h3>
+            <div className="summary">
+              {outcome.perField.map((f,i)=> (
+                <div key={i} className="card" style={{padding:10}}>
+                  <div className="meta">{FIELDS[i]}</div>
+                  <ul style={{listStyle:"none", padding:0, margin:0}}>
+                    {f.years.map((y,idx)=> (
+                      <li key={idx} style={{display:"flex", justifyContent:"space-between", margin:"2px 0"}}>
+                        <span>{YEARS[idx]}: {y.crop ? `${y.crop.emoji} ${y.crop.label}` : "—"}</span>
+                        <span style={{fontWeight:600}}>{y.yield}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{textAlign:"right", marginTop:4}}>Total parcela: <b>{f.sum}</b></div>
+                  <div className="meta">Reglas: {f.rules.barbechoOnce ? "✓ 1 Barbecho" : "✗ 1 Barbecho"} · {f.rules.noConsecCereal ? "✓ sin cereales seguidos" : "✗ sin cereales seguidos"} · {f.rules.hasLegume ? "✓ con Legumbres" : "✗ con Legumbres"}</div>
+                </div>
+              ))}
+            </div>
+            {/* fixed hr style for JSX */}
+            <hr style={{border:'none', borderTop:'1px solid var(--border)', margin:'10px 0'}} />
+            <div className="kpi">
+              <div>Producción total: <b>{outcome.total}</b></div>
+              <div>Diezmo (10%): <b>{Math.ceil(outcome.total * 0.10)}</b></div>
+              <div>Renta: <b>5</b></div>
+              <div>Superávit objetivo: <b>{mode==="hard" ? "≥ 10 (Difícil)" : "≥ 6 (Normal)"}</b></div>
+            </div>
+          </div>
+
+          <div style={{display:"flex", alignItems:"center", gap:12, marginTop:12}}>
+            {message.type && <div className={"msg "+(message.type==="ok"?"ok":message.type==="err"?"err":"hint")}>{message.text}</div>}
+            {revealed && (
+              <div className="codebox">
+                <div className="title">Código</div>
+                <div className="code">TRIENAL++</div>
+              </div>
+            )}
+          </div>
+
+          <div className="footer">
+            <b>Variantes:</b> añade cultivos señuelo (centeno, hortalizas), ajusta el umbral de superávit o impón límite de 5′ con ranking por tiempo.
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

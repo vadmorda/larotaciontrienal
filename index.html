@@ -51,6 +51,34 @@
     .footer { margin-top: 16px; font-size:12px; color:#64748b; }
     .pill { display:inline-block; border:1px solid var(--border); padding:2px 8px; border-radius:999px; font-size:12px; color:#334155; background:#f8fafc; }
     .kpi { display:flex; gap:12px; align-items:center; flex-wrap: wrap; }
+
+    /* --- Pantalla de acceso (añadido) --- */
+    .gate {
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .gate-card {
+      width: 100%;
+      max-width: 560px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(2,6,23,.06);
+    }
+    .gate h2 { margin:0 0 6px 0; }
+    .gate p { margin:0 0 12px 0; color: var(--muted); }
+    .gate form { display:flex; gap:8px; }
+    .gate input[type="text"]{
+      flex:1;
+      padding:10px 12px;
+      border:1px solid var(--border);
+      border-radius: 10px;
+      font-size:16px;
+    }
+    .gate .err { margin-top:10px; background:#ffe4e6; color:#9f1239; padding:8px 10px; border-radius:10px; font-size:14px; }
   </style>
 </head>
 <body>
@@ -66,6 +94,46 @@
 
   <script type="text/babel" data-presets="env,react">
     const { useState, useEffect, useMemo } = React;
+
+    /* -------------------- PANTALLA DE ACCESO (añadida) -------------------- */
+    function Gate({ onUnlock }) {
+      const [val, setVal] = useState("");
+      const [err, setErr] = useState("");
+
+      const submit = (e) => {
+        e.preventDefault();
+        const ok = val.trim().toLowerCase() === "curia";
+        if (ok) {
+          try { sessionStorage.setItem("gate_trienal_ok", "1"); } catch {}
+          onUnlock();
+        } else {
+          setErr("Código incorrecto. Pista: viene del mapa del feudo…");
+        }
+      };
+
+      return (
+        <div className="gate">
+          <div className="gate-card">
+            <h2>Introduce el código para acceder</h2>
+            <p>Escribe la palabra descubierta en el mapa. Acepta mayúsculas o minúsculas.</p>
+            <form onSubmit={submit}>
+              <input
+                type="text"
+                inputMode="text"
+                autoFocus
+                aria-label="Código de acceso"
+                placeholder="Escribe el código…"
+                value={val}
+                onChange={(e)=> { setVal(e.target.value); setErr(""); }}
+              />
+              <button className="btn green" type="submit">Entrar</button>
+            </form>
+            {err && <div className="err" role="alert">{err}</div>}
+          </div>
+        </div>
+      );
+    }
+    /* --------------------------------------------------------------------- */
 
     const CROPS = [
       { id: "trigo", label: "Trigo", emoji: "🌾", type: "cereal", base: 3, fertDelta: -2 },
@@ -336,7 +404,17 @@
       );
     }
 
-    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    /* ------------ Componente raíz que controla el acceso (añadido) ----------- */
+    function Root(){
+      const [ok, setOk] = useState(() => {
+        try { return sessionStorage.getItem("gate_trienal_ok") === "1"; } catch { return false; }
+      });
+      return ok ? <App /> : <Gate onUnlock={()=> setOk(true)} />;
+    }
+    /* ------------------------------------------------------------------------- */
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
   </script>
 </body>
 </html>
+
